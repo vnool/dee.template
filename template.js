@@ -6,7 +6,17 @@
  */
 'use strict';
 var FS = require("fs");
-if (typeof(FS.existsSync) == 'undefined') FS = window.FSX;
+var __run_in_node__ = true;
+var userAgent = navigator.userAgent.toLowerCase();
+if (userAgent.indexOf('electron/') > -1) {
+	__run_in_node__ = true;
+} else {
+	__run_in_node__ = false; 
+	FS = window.FSX;
+}
+
+ 
+
 const path = require('path');
 if (typeof(window.$) == 'undefined') {
 	console.error('%c $ jquery  is not ready!!!!!', 'font-size:20pt');
@@ -37,7 +47,7 @@ class Template {
 		//TODO   html模板
 		var html = $(tplSel).text();
 		//html = "<div>"+html+"</div>";
-		return makeNodeFromString(html, jsonData);
+		return Template.makeNodeFromString(html, jsonData);
 
 	}
 	static makeNodeFromString(html, jsonData) {
@@ -292,7 +302,7 @@ var HTMLinclude = (scope, baseURI) => {
 
 
 		var localScript = {};
-		if (typeof(window.webpackused) == 'undefined') {
+		if (__run_in_node__) {
 			localScript = require(jsurl);
 		} else {
 			localScript = FS.requireJs(jsurl);
