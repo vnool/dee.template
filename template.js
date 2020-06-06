@@ -5,19 +5,19 @@
  * @Last Modified time: 2017-05-04 09:27:57
  */
 'use strict';
-const http = require('http');
 var FS = require("fs");
+if (typeof(FS.existsSync) == 'undefined') FS = window.FSX;
 const path = require('path');
 if (typeof(window.$) == 'undefined') {
 	console.error('%c $ jquery  is not ready!!!!!', 'font-size:20pt');
-	return;
+	//return;
 }
 
 class Template {
 	constructor() {
 
-		}
-		/** 根据魔板及数据  生成html代码,
+	}
+	/** 根据魔板及数据  生成html代码,
 		1.0仅支持一层json数据  2.0支持json对象(不支持数组) 3.0支持全json(内含数组)
 	
 		* 模板：
@@ -37,10 +37,13 @@ class Template {
 		//TODO   html模板
 		var html = $(tplSel).text();
 		//html = "<div>"+html+"</div>";
+		return makeNodeFromString(html, jsonData);
+
+	}
+	static makeNodeFromString(html, jsonData) {
 		html = Template.applyData(html, jsonData);
 
 		return $(html);
-
 	}
 
 
@@ -140,30 +143,41 @@ class FromEbededObject {
 	}
 
 	//从include文件内，获取一段html
-	element(sel) {
-			var elem = $(sel, this.document);
-			if (elem.length < 1) {
-				return;
-			}
-			return elem[0].innerHTML;
+	elementHtml(sel) {
+		var elem = $(sel, this.document);
+		if (elem.length < 1) {
+			return;
 		}
-		//获取html并给魔板内变量赋值 
+		return elem[0].innerHTML;
+	}
+	//获取html并给魔板内变量赋值 
 	template(sel, json) {
-		var html = this.element(sel);
+		var html = this.elementHtml(sel);
 		return Template.applyDataAdv(html, json);
 	}
 
 
 }
 
+class TemplateFromString {
 
-class TemplateFromFile {
-	constructor(filepath, code) {
-		this.code = code;
-		this.readfile(filepath);
+	constructor(html) {
+		this.templateObj = $("<div>" + html + "</div>");
 
 	}
-	readfile(filepath) {
+	elementHtml(sel) {
+		return this.templateObj.find(sel).prop('innerHTML') + "";
+	}
+	template(sel, jsonData) {
+		var text = this.elementHtml(sel);
+		//var text = this.templateObj.find(sel).text();
+		return Template.applyDataAdv(text, jsonData);
+	}
+}
+class TemplateFromFile extends TemplateFromString {
+	constructor(filepath) {
+		super("");
+
 		var html = '';
 		if (!FS.existsSync(filepath)) {
 			console.error("[dee-template]file not exists: " + filepath);
@@ -173,23 +187,18 @@ class TemplateFromFile {
 		}
 
 
+
 		this.templateObj = $("<div>" + html + "</div>");
 
 	}
-	getOrignalHtml(sel) {
-		return this.templateObj.find(sel).prop('innerHTML') + "";
-	}
-	template(sel, jsonData) {
-		var text = this.getOrignalHtml(sel);
-		//var text = this.templateObj.find(sel).text();
-		return Template.applyDataAdv(text, jsonData);
-	}
+
 
 }
 //vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv include 功能 vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 
 
 var HTMLinclude = (scope, baseURI) => {
+	if (baseURI == undefined) baseURI = decodeURI(document.baseURI);
 	var basedir = path.join(baseURI).replace(path.sep == '/' ? 'file:' : 'file:\\', '');
 
 	basedir = path.dirname(basedir);
@@ -214,15 +223,17 @@ var HTMLinclude = (scope, baseURI) => {
 			}
 
 			fileurl = path.join(basedir, filepath);
+
+
 			if (!FS.existsSync(fileurl)) {
 				console.error("[include]file not exist:" + fileurl);
 				return;
 			}
 
+
 			HTMLinclude.maker[fileid] = new TemplateFromFile(fileurl, (ele[0].outerHTML).trim());
 			HTMLinclude.maker[fileid]._htmlfile = fileurl;
 		}
-
 
 		if (!sel) {
 			continue;
@@ -237,14 +248,15 @@ var HTMLinclude = (scope, baseURI) => {
 				console.error(data);
 			}
 		} else {
-			html = HTMLinclude.maker[fileid].getOrignalHtml('#' + sel);
+			html = HTMLinclude.maker[fileid].elementHtml('#' + sel);
 		}
 
 
 		var oldNode = ele.get(0);
 		oldNode.innerHTML = html;
 		oldNode.setAttribute('loaded', 'yes');
-
+        csslinkRes(oldNode, basedir);
+		
 		if (script) {
 			var moduleID = ('M' + Math.random()).replace('0.', '');
 			if (!oldNode.id) {
@@ -254,6 +266,7 @@ var HTMLinclude = (scope, baseURI) => {
 			}
 
 			let jsurl = path.join(basedir, script);
+
 
 			runJs(oldNode, jsurl);
 
@@ -265,24 +278,63 @@ var HTMLinclude = (scope, baseURI) => {
 		}
 		Template.HTMLinclude(oldNode, fileurl);
 
-		//执行代码
-		function runJs(oldNode, jsurl) {
-			if (!FS.existsSync(jsurl) && !FS.existsSync(jsurl + '.js')) {
-				console.error("[include]file not exist:" + jsurl);
-				return;
-			}
 
-			var localScript = require(jsurl);
+	} //for
+
+	//执行代码
+	function runJs(oldNode, jsurl) {
+
+
+		if (!FS.existsSync(jsurl) && !FS.existsSync(jsurl + '.js')) {
+			console.error("[include]file not exist:" + jsurl);
+			return;
+		}
+
+
+		var localScript = {};
+		if (typeof(window.webpackused) == 'undefined') {
+			localScript = require(jsurl);
+		} else {
+			localScript = FS.requireJs(jsurl);
+		}
+
+		if (localScript == null) {
+			return;
+		}
+		try {
 			oldNode.runtime = new localScript(function(a) {
 				return window.$(a, oldNode); //window.$('#' + moduleID));
 			});
+
+		} catch (e) {
+			console.warn("requireJS: " + jsurl)
+			console.warn(e);
+		}
+
+		if (oldNode.runtime != undefined) {
 			//用法 $('.abc').runtime.myPublicFunction(2121);
 			EventFactory.on(oldNode.runtime); //
 			//用法  $('.abc').runtime.on('myevent',function(){ ...})
 			//触发、: $('.abc').runtime.myevent.trigger(123); OR  $('.abc').runtime.trigger('myevent',123);
 		}
+	} //----runJS
 
+
+	
+	function csslinkRes(scope, basedir){ 
+		if(basedir=='.') return;
+		var csslinks = $("link[loaded!='yes']", scope);
+	//console.log('csslinks.length'+ csslinks.length);
+		for (var i = 0; i < csslinks.length; i++) {
+		var ele = csslinks.eq(i);
+		var filepath = ele.attr('href');
+		filepath = path.join(basedir, filepath);
+		ele.attr('href', filepath+"?");
+		ele.attr('loaded','yes');
 	}
+	}
+	
+	
 
 };
 HTMLinclude.maker = [];
@@ -381,7 +433,7 @@ class EventFactory {
 
 
 //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Template.EventFactory =EventFactory;
+Template.EventFactory = EventFactory;
 
 //激活HTML里的include标签
 Template.HTMLinclude = HTMLinclude;
@@ -389,6 +441,7 @@ Template.HTMLinclude = HTMLinclude;
 Template.fromEmbededObject = FromEbededObject;
 //使用文件系统里的文件作为魔板
 Template.fromFile = TemplateFromFile;
+Template.fromString = TemplateFromString;
 Template.activeInclude = () => {
 	console.log('the function [activeInclude] is not ready yet!')
 }
@@ -399,10 +452,11 @@ if (!Template.isLoad) {
 	document.addEventListener('DOMContentLoaded', function() {
 		console.log('document.ready');
 		//Template.HTMLinclude(document);
+		//Template.HTMLinclude(document, decodeURI(document.baseURI));
 	});
 }
 Template.isLoad = true;
 
 module.exports = Template;
 
-Template.HTMLinclude(document, decodeURI(document.baseURI));
+//Template.HTMLinclude(document, decodeURI(document.baseURI));
