@@ -11,11 +11,11 @@ var userAgent = navigator.userAgent.toLowerCase();
 if (userAgent.indexOf('electron/') > -1) {
 	__run_in_node__ = true;
 } else {
-	__run_in_node__ = false; 
+	__run_in_node__ = false;
 	FS = window.FSX;
 }
 
- 
+
 
 const path = require('path');
 if (typeof(window.$) == 'undefined') {
@@ -52,8 +52,10 @@ class Template {
 	}
 	static makeNodeFromString(html, jsonData) {
 		html = Template.applyData(html, jsonData);
-
-		return $(html);
+		var node = $(html);
+		utils.csslinkRes(node, ''); //可能也没写好
+		utils.imgSrcRes(node, ''); //没写好
+		return node;
 	}
 
 
@@ -263,10 +265,17 @@ var HTMLinclude = (scope, baseURI) => {
 
 
 		var oldNode = ele.get(0);
-		oldNode.innerHTML = html;
+
+		var tmp = $("<div>" + html + "</div>");
+		utils.csslinkRes(tmp, basedir); //可能也没写好
+		utils.imgSrcRes(tmp, basedir); //没写好
+		//console.log(tmp.html());
+
+		oldNode.innerHTML = tmp.html();
 		oldNode.setAttribute('loaded', 'yes');
-        csslinkRes(oldNode, basedir);
-		
+
+
+
 		if (script) {
 			var moduleID = ('M' + Math.random()).replace('0.', '');
 			if (!oldNode.id) {
@@ -330,24 +339,41 @@ var HTMLinclude = (scope, baseURI) => {
 	} //----runJS
 
 
-	
-	function csslinkRes(scope, basedir){ 
-		if(basedir=='.') return;
-		var csslinks = $("link[loaded!='yes']", scope);
-	//console.log('csslinks.length'+ csslinks.length);
-		for (var i = 0; i < csslinks.length; i++) {
-		var ele = csslinks.eq(i);
-		var filepath = ele.attr('href');
-		filepath = path.join(basedir, filepath);
-		ele.attr('href', filepath+"?");
-		ele.attr('loaded','yes');
-	}
-	}
-	
-	
+
+
+
+
 
 };
 HTMLinclude.maker = [];
+
+var utils = {};
+utils.csslinkRes = function(scope, basedir) {
+	if (typeof(FS.cssLinkTransfer) == 'undefined') return;
+
+	var csslinks = $("link[trsf!='yes']", scope);
+	//console.log('csslinks.length'+ csslinks.length);
+	for (var i = 0; i < csslinks.length; i++) {
+		var ele = csslinks.eq(i);
+		var filepath = ele.attr('href');
+		var path_ = FS.cssLinkTransfer(filepath, basedir);
+		ele.attr('href', path_ || filepath);
+		ele.attr('trsf', 'yes');
+	}
+}
+
+utils.imgSrcRes = function(scope, basedir) {
+	if (typeof(FS.imgSrcTransfer) == 'undefined') return;
+
+	var imglist = $("img[trsf!='yes']", scope);
+	for (var i = 0; i < imglist.length; i++) {
+		var ele = imglist.eq(i);
+		var filepath = ele.attr('src');
+		var path_ = FS.imgSrcTransfer(filepath, basedir);
+		ele.attr('src', path_ || filepath);
+		ele.attr('trsf', 'yes');
+	}
+}
 
 
 //！！在多实例情况下， 限制include代码对内部HTML节点作用域范围 
